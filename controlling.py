@@ -208,9 +208,24 @@ def save_images(imgs, output_dir='output', nrow=2):
         ax.set_xticks([])
         ax.set_yticks([])
         ax.imshow(img)
-        plt.savefig(os.path.join(output_dir, f'image_{idx}.png'), bbox_inches='tight')
-
+        plt.savefig(os.path.join(output_dir, f'image_{idx}.png'), bbox_inches='tight')    
     
+
+def save_images_2(imgs, output_dir='output', nrow=2):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    _, axs = plt.subplots(nrow, imgs.shape[0] // nrow, figsize=(4, 2))
+    axs = axs.flatten()
+
+    for idx, (img, ax) in enumerate(zip(imgs, axs)):
+        img = (img.permute(1, 2, 0).clip(-1, 1).detach().cpu().numpy() + 1) / 2
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.imshow(img)
+        plt.savefig(os.path.join(output_dir, f'image_{idx + 8}.png'), bbox_inches='tight')
+
+
 # user defined context
 ctx = torch.tensor([
     # hero, non-hero, food, spell, side-facing
@@ -224,8 +239,8 @@ ctx = torch.tensor([
     [0,0,1,0,0],
 ]).float().to(device)
 samples, _ = sample_ddpm_context(ctx.shape[0], ctx)
-# show_images(samples)
-# save_images(samples)
+show_images(samples)
+save_images(samples)
 
 
 # mix of defined context
@@ -240,4 +255,4 @@ ctx = torch.tensor([
 ]).float().to(device)
 samples, _ = sample_ddpm_context(ctx.shape[0], ctx)
 show_images(samples)
-save_images(samples)
+save_images_2(samples)

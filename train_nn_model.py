@@ -133,13 +133,26 @@ nn_model = ContextUnet(in_channels=3, n_feat=n_feat, n_cfeat=n_cfeat, height=hei
 # Training
 
 # load dataset and construct optimizer
+# 加载数据集和构建优化器
+# 首先，从磁盘上加载一个自定义数据集，数据集包含图像和标签。
+# 然后，创建一个DataLoader对象，用于在训练过程中从数据集中加载批量数据。
+# 接着，使用Adam优化器来优化神经网络模型（nn_model）的参数。
 dataset = CustomDataset("./sprites_1788_16x16.npy", "./sprite_labels_nc_1788_16x16.npy", transform, null_context=False)
 dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=1)
 optim = torch.optim.Adam(nn_model.parameters(), lr=lrate)
 
 # helper function: perturbs an image to a specified noise level
+# 定义扰动函数
+# 定义一个名为perturb_input的函数，用于在输入图像和噪声之间添加扰动。
+# 这个函数接受输入图像x、时间步t和噪声noise作为参数，返回扰动后的图像。
+'''
+实际上，当将噪声应用到输入图像上时，perturb_input函数会考虑时间步t。
+这是通过将噪声与输入图像的权重线性插值来实现的。
+具体来说，当t较小时，噪声所占的权重较小；当t较大时，噪声所占的权重较大。
+'''
 def perturb_input(x, t, noise):
     return ab_t.sqrt()[t, None, None, None] * x + (1 - ab_t[t, None, None, None]) * noise
+
 
 # training without context code
 
@@ -147,36 +160,57 @@ def perturb_input(x, t, noise):
 nn_model.train()
 
 for ep in range(n_epoch):
+    # 打印当前周期数。
     print(f'epoch {ep}')
     
     # linearly decay learning rate
+    # 线性衰减学习率。
     optim.param_groups[0]['lr'] = lrate*(1-ep/n_epoch)
     
+    # 使用tqdm模块创建一个进度条，用于展示批量数据处理的进度。
     pbar = tqdm(dataloader, mininterval=2 )
+    
+    # 遍历数据加载器生成的批量数据（图像x）。
     for x, _ in pbar:   # x: images
+        # 清除优化器的梯度缓存。
         optim.zero_grad()
+        
+        # 将图像移动到指定的设备（例如GPU）。
         x = x.to(device)
         
         # perturb data
+        # 生成与输入图像具有相同形状的随机噪声。
         noise = torch.randn_like(x)
+        
+        # 随机选择一个时间步t。
         t = torch.randint(1, timesteps + 1, (x.shape[0],)).to(device) 
+        
+        # 使用perturb_input函数扰动输入图像
         x_pert = perturb_input(x, t, noise)
         
         # use network to recover noise
+        # 将扰动后的图像输入神经网络，预测噪声。
         pred_noise = nn_model(x_pert, t / timesteps)
         
         # loss is mean squared error between the predicted and true noise
+        # 计算预测噪声与真实噪声之间的均方误差作为损失。
         loss = F.mse_loss(pred_noise, noise)
+        
+        # 反向传播误差以计算梯度。
         loss.backward()
         
+        # 使用优化器更新神经网络的权重
         optim.step()
 
     # save model periodically
+    # 定期保存模型：在每个训练周期后，根据条件（例如每4个周期或在最后一个周期）将模型的状态字典保存到磁盘上。
+    # 如果保存目录不存在，则创建该目录。
     if ep%4==0 or ep == int(n_epoch-1):
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
         torch.save(nn_model.state_dict(), save_dir + f"model_{ep}.pth")
         print('saved model at ' + save_dir + f"model_{ep}.pth")
+        
         
 # Sampling
 # helper function; removes the predicted noise (but adds some noise back in to avoid collapse)
@@ -213,7 +247,9 @@ def sample_ddpm(n_sample, save_rate=20):
     return samples, intermediate
 
         
-        
+'''
+ View Epochs
+'''
 # View Epoch 0
 # load in model weights and set to eval mode
 nn_model.load_state_dict(torch.load(f"{save_dir}/model_0.pth", map_location=device))
